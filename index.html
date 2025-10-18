@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Address Redirect Detector</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; padding: 18px; max-width: 720px; margin: auto; }
+    button { padding: 10px 14px; font-size: 16px; border-radius: 8px; }
+    pre { background:#f4f4f4; padding: 10px; border-radius: 6px; }
+    .hi { color: green; font-weight: 700; }
+    .bye { color: red; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>Address Redirect Detector</h1>
+  <p>Click the button to read your GPS, get the address, and redirect if matched.</p>
+
+  <button id="go">Detect My Address</button>
+
+  <h3>Status</h3>
+  <p id="status">Idle</p>
+
+  <h3>Coordinates</h3>
+  <p id="coords">—</p>
+
+  <h3>Reverse-Geocoded Address</h3>
+  <pre id="address">—</pre>
+
+  <h3>Result</h3>
+  <p id="result">—</p>
+
+<script>
+const TARGET_RAW = "Pekeliling Rokam, Kampung Seri Ampang B, 昆仑喇叭, Ipoh, 近打县, Perak, 31350, Malaysia";
+const TARGET_TOKENS = TARGET_RAW.split(',').map(t => t.trim()).filter(Boolean);
+
+function normalize(str) {
+  if (!str) return '';
+  return str.toString().toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function isFullMatch(addressDisplayName) {
+  const normAddress = normalize(addressDisplayName);
+  for (const token of TARGET_TOKENS) {
+    const normToken = normalize(token);
+    if (!normToken) continue;
+    if (!normAddress.includes(normToken)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+document.getElementById('go').addEventListener('click', async () => {
+  const statusEl = document.getElementById('status');
+  const coordsEl = document.getElementById('coords');
+  const addressEl = document.getElementById('address');
+  const resultEl = document.getElementById('result');
+
+  statusEl.textContent = 'Requesting location…';
+  coordsEl.textContent = '—';
+  addressEl.textContent = '—';
+  resultEl.textContent = '—';
+
+  if (!navigator.geolocation) {
+    statusEl.textContent = 'Geolocation not supported.';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    coordsEl.textContent = `Latitude: ${lat}\nLongitude: ${lon}`;
+    statusEl.textContent = 'Reverse-geocoding…';
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=0`;
+      const resp = await fetch(url);
+
+      if (!resp.ok) throw new Error('Reverse geocode failed: ' + resp.status);
+
+      const json = await resp.json();
+      const displayName = json.display_name || '';
+      addressEl.textContent = displayName || '(no address returned)';
+
+      if (isFullMatch(displayName)) {
+        resultEl.innerHTML = `<span class="hi">hi</span> - Redirecting…`;
+        statusEl.textContent = 'Address matched. Redirecting…';
+        // Redirect to target page
+        window.location.href = "https://borangkehadiran.github.io/Borang-Kehadiran-Guru-SKRDHE/";
+      } else {
+        resultEl.innerHTML = `<span class="bye">bye</span>`;
+        statusEl.textContent = 'Address did NOT match.';
+      }
+
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = 'Error fetching address: ' + err.message;
+      addressEl.textContent = '—';
+      resultEl.textContent = '—';
+    }
+
+  }, (err) => {
+    switch(err.code) {
+      case err.PERMISSION_DENIED:
+        statusEl.textContent = 'User denied geolocation.';
+        break;
+      case err.POSITION_UNAVAILABLE:
+        statusEl.textContent = 'Position unavailable.';
+        break;
+      case err.TIMEOUT:
+        statusEl.textContent = 'Geolocation timed out.';
+        break;
+      default:
+        statusEl.textContent = 'Geolocation error: ' + err.message;
+    }
+    coordsEl.textContent = '—';
+    addressEl.textContent = '—';
+    resultEl.textContent = '—';
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+});
+</script>
+</body>
+</html>
